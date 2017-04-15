@@ -56,7 +56,7 @@ func (ic *IncidentsUtilController) loadConfig() ([]byte, error) {
 
 func (ic IncidentsUtilController) es_client() (*elastic.Client, context.Context, error) {
 	ctx := context.Background()
-	client, err := elastic.NewClient(elastic.SetURL(ic.ElasticsearchURL))
+	client, err := elastic.NewClient(elastic.SetURL(ic.ElasticsearchURL), elastic.SetSniff(true))
 	if err != nil {
 		log.Error("Can not create es client: " + err.Error())
 		return nil, nil, errors.New(fmt.Sprintln("Can not create es client: ", err))
