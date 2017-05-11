@@ -7,6 +7,7 @@ import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/bitly/go-simplejson"
+	"github.com/robfig/cron"
 	elastic "gopkg.in/olivere/elastic.v5"
 	"io/ioutil"
 	"net/http"
@@ -134,25 +135,30 @@ func (ic IncidentsUtilController) Snapshot() {
 		return
 	}
 	js, _ := simplejson.NewJson(bytes)
-	//for {
-	log.Info("========================")
-	client, ctx, err := ic.es_client()
-	if err != nil {
-		log.Error("Can not connect to ES" + err.Error())
-		return
-	}
-	arr, _ := js.Get("snapshot_indices").Array()
-	for _, v := range arr {
-		m := v.(map[string]interface{})
-		index := m["index"].(string)
-		repository := m["repository"].(string)
-		snap_name := m["snap_name"].(string)
-		log.Infof("---begin to snapshot index[%s] in repository[%s]", index, repository)
-		ic.snapshot_index(repository, snap_name, index, client, ctx)
-		log.Infof("---End to snapshot index[%s] in repository[%s]", index, repository)
-	}
-	//		time.Sleep(duration)
-	//}
+	c := cron.New()
+	spec, _ := js.Get("cron").String()
+	//spec := "0 */1 * * * *"
+	c.AddFunc(spec, func() {
+		log.Info("========================")
+		client, ctx, err := ic.es_client()
+		if err != nil {
+			log.Error("Can not connect to ES" + err.Error())
+			return
+		}
+		arr, _ := js.Get("snapshot_indices").Array()
+		for _, v := range arr {
+			m := v.(map[string]interface{})
+			index := m["index"].(string)
+			repository := m["repository"].(string)
+			snap_name := m["snap_name"].(string)
+			log.Infof("---begin to snapshot index[%s] in repository[%s]", index, repository)
+			ic.snapshot_index(repository, snap_name, index, client, ctx)
+			log.Infof("---End to snapshot index[%s] in repository[%s]", index, repository)
+		}
+		client.Stop()
+	})
+	c.Start()
+	select {}
 }
 
 func (ic IncidentsUtilController) snapshot_index(repository string, snap_name string, index string, client *elastic.Client, ctx context.Context) {
@@ -208,7 +214,7 @@ func (ic IncidentsUtilController) make_snap(repository string, snap_name string,
 	if err != nil || !snapResp.Accepted {
 		log.Errorf("Snapshot indices[%s] failed!", indices)
 	} else {
-		log.Infof("Snapshot indices[%s] success!", indices)
+		log.Infof("Snapshot indices[%s] success, snapshot name is %s", indices, snap_name)
 	}
 }
 
