@@ -2,10 +2,28 @@ package logutil
 
 import (
 	"github.com/Sirupsen/logrus"
+	"os"
 	"path"
 	"runtime"
 	"strings"
 )
+
+func Init(loglevel string) {
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+	//log.SetFormatter(&logrus.TextFormatter{})
+	logrus.SetOutput(os.Stdout)
+	switch strings.ToLower(loglevel) {
+	case "info":
+		logrus.SetLevel(logrus.InfoLevel)
+	case "debug":
+		logrus.SetLevel(logrus.DebugLevel)
+	case "error":
+		logrus.SetLevel(logrus.ErrorLevel)
+	default:
+		logrus.SetLevel(logrus.InfoLevel)
+	}
+	logrus.AddHook(ContextHook{})
+}
 
 type ContextHook struct{}
 
@@ -23,7 +41,7 @@ func (hook ContextHook) Fire(entry *logrus.Entry) error {
 		if !strings.Contains(name, "github.com/Sirupsen/logrus") {
 			file, line := fu.FileLine(pc[i] - 1)
 			entry.Data["file"] = path.Base(file)
-			entry.Data["func"] = path.Base(name)
+			//			entry.Data["func"] = path.Base(name)
 			entry.Data["line"] = line
 			break
 		}
