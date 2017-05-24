@@ -42,12 +42,12 @@ func (ic IncidentsUtilController) es_client() (*elastic.Client, context.Context,
 	client, err := elastic.NewClient(elastic.SetURL(ic.ElasticsearchURL), elastic.SetSniff(true))
 	if err != nil {
 		log.Error("Can not create es client: " + err.Error())
-		return nil, nil, errors.New(fmt.Sprintln("Can not create es client: ", err))
+		return nil, context.TODO(), errors.New(fmt.Sprintln("Can not create es client: ", err))
 	}
 	info, code, err := client.Ping(ic.ElasticsearchURL).Do(ctx)
 	if err != nil {
 		log.Error("Elasticsearch returned with code %d and version %s", code, info.Version.Number)
-		return nil, nil, errors.New(fmt.Sprintln("Elasticsearch returned with code %d and version %s", code, info.Version.Number))
+		return nil, context.TODO(), errors.New(fmt.Sprintln("Elasticsearch returned with code %d and version %s", code, info.Version.Number))
 	}
 	return client, ctx, nil
 }
@@ -73,14 +73,14 @@ func (ic IncidentsUtilController) Cleanup() {
 			m := v.(map[string]interface{})
 			index_prefix := m["index"].(string)
 			time_series, _ := strconv.Atoi(string(m["time_series"].(json.Number)))
-			ic.clean_index(index_prefix, time_series, client, ctx)
+			ic.clean_index(ctx, index_prefix, time_series, client)
 		}
 		log.Info("---end---")
 		time.Sleep(duration)
 	}
 }
 
-func (ic IncidentsUtilController) clean_index(indexPrefix string, lastDays int, client *elastic.Client, ctx context.Context) {
+func (ic IncidentsUtilController) clean_index(ctx context.Context, indexPrefix string, lastDays int, client *elastic.Client) {
 	reservedIndices := getReservedIndices(indexPrefix, lastDays)
 	resp, err := client.IndexGet().Index(indexPrefix + "*").Human(true).Pretty(true).Feature("_aliases").Do(ctx)
 	if err != nil {
@@ -152,7 +152,7 @@ func (ic IncidentsUtilController) Snapshot() {
 			repository := m["repository"].(string)
 			snap_name := m["snap_name"].(string)
 			log.Infof("---begin to snapshot index[%s] in repository[%s]", index, repository)
-			ic.snapshot_index(repository, snap_name, index, client, ctx)
+			ic.snapshot_index(ctx, repository, snap_name, index, client)
 			log.Infof("---End to snapshot index[%s] in repository[%s]", index, repository)
 		}
 		client.Stop()
@@ -161,7 +161,7 @@ func (ic IncidentsUtilController) Snapshot() {
 	select {}
 }
 
-func (ic IncidentsUtilController) snapshot_index(repository string, snap_name string, index string, client *elastic.Client, ctx context.Context) {
+func (ic IncidentsUtilController) snapshot_index(ctx context.Context, repository string, snap_name string, index string, client *elastic.Client) {
 	body := fmt.Sprintf("{\"type\":\"fs\",\"settings\":{\"location\":\"%s\",\"compress\":true}}", repository)
 	resp, err := client.SnapshotCreateRepository(repository).Repository(repository).BodyString(body).Pretty(true).Do(ctx)
 	if err != nil || !resp.Acknowledged {
@@ -170,7 +170,7 @@ func (ic IncidentsUtilController) snapshot_index(repository string, snap_name st
 	}
 	log.Infof("Create snapshot repository [%s] successfully!", repository)
 
-	indices := ic.get_all_indices(index, client, ctx)
+	indices := ic.get_all_indices(ctx, index, client)
 	ic.make_snap(repository, snap_name, strings.Join(indices, ","))
 }
 
@@ -218,7 +218,7 @@ func (ic IncidentsUtilController) make_snap(repository string, snap_name string,
 	}
 }
 
-func (ic IncidentsUtilController) get_all_indices(index string, client *elastic.Client, ctx context.Context) []string {
+func (ic IncidentsUtilController) get_all_indices(ctx context.Context, index string, client *elastic.Client) []string {
 	resp, err := client.IndexGet().Index(index).Pretty(true).Do(ctx)
 	ret := make([]string, 0)
 	if err != nil {
