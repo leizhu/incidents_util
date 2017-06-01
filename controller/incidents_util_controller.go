@@ -73,38 +73,52 @@ func (ic IncidentsUtilController) Cleanup() {
 			m := v.(map[string]interface{})
 			index_prefix := m["index"].(string)
 			time_series, _ := strconv.Atoi(string(m["time_series"].(json.Number)))
-			ic.clean_index(ctx, index_prefix, time_series, client)
+			clean_type := m["clean_type"].(string)
+			ic.clean_index(ctx, index_prefix, time_series, clean_type, client)
 		}
 		log.Info("---end---")
 		time.Sleep(duration)
 	}
 }
 
-func (ic IncidentsUtilController) clean_index(ctx context.Context, indexPrefix string, lastDays int, client *elastic.Client) {
+func (ic IncidentsUtilController) clean_index(ctx context.Context, indexPrefix string, lastDays int, clean_type string, client *elastic.Client) {
 	reservedIndices := getReservedIndices(indexPrefix, lastDays)
 	resp, err := client.IndexGet().Index(indexPrefix + "*").Human(true).Pretty(true).Feature("_aliases").Do(ctx)
 	if err != nil {
 		log.Error("Can not get existing indices in ES" + err.Error())
 		return
 	}
-	deletedIndices := []string{}
+	processedIndices := []string{}
 	for esIndex, _ := range resp {
 		if !stringInSlice(esIndex, reservedIndices) {
-			deletedIndices = append(deletedIndices, esIndex)
+			processedIndices = append(processedIndices, esIndex)
 		}
 	}
-	if len(deletedIndices) > 0 {
-		log.Info("Delete below indices: " + strings.Join(deletedIndices, ", "))
-		resp, err := client.DeleteIndex().Index(deletedIndices).Pretty(true).Do(ctx)
-		if err != nil {
-			log.Error("Delete index error: " + err.Error())
-			return
+	if len(processedIndices) > 0 {
+		log.Info("Process below indices: " + strings.Join(processedIndices, ", "))
+		if clean_type == "close" {
+			resp, err := client.CloseIndex(strings.Join(processedIndices, ",")).Index(strings.Join(processedIndices, ",")).Pretty(true).Do(ctx)
+			if err != nil {
+				log.Error("Close index error: " + err.Error())
+				return
+			}
+			if !resp.Acknowledged {
+				log.Error("Close index error: " + err.Error())
+				return
+			}
+			log.Info("Close indices successful!")
+		} else {
+			resp, err := client.DeleteIndex().Index(processedIndices).Pretty(true).Do(ctx)
+			if err != nil {
+				log.Error("Delete index error: " + err.Error())
+				return
+			}
+			if !resp.Acknowledged {
+				log.Error("Delete index error: " + err.Error())
+				return
+			}
+			log.Info("Delete indices successful!")
 		}
-		if !resp.Acknowledged {
-			log.Error("Delete index error: " + err.Error())
-			return
-		}
-		log.Info("Delete indices successful!")
 	}
 }
 
